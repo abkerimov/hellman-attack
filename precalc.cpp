@@ -17,6 +17,8 @@
 #define s_variant 16
 #define h_variant 32
 
+
+
 typedef struct {
     uint64_t lo, hi;
     bool operator[](size_t index) const {
@@ -335,8 +337,46 @@ void build_precalc_table_in_memory_multithreaded(size_t k, size_t l, int threads
 }
 
 
-void build_precalc_table_in_memory_multithreaded_2(size_t k, size_t l, int threads = 8) {
+uint128_t find_preimage2(size_t K, size_t L,
+                                const std::vector<uint16_t*>& X_0,
+                                const std::vector<uint16_t*>& X_l,
+                                uint16_t h,
+                                uint128_t r) {
 
+
+    auto* mega_X_0 = new uint16_t[K];
+    auto* mega_X_l = new uint16_t[K];
+
+    for (size_t i = 0, count = -1; i < K; ++i) { 
+        if (i % (K / 8) == 0) {
+            ++count;    
+        }
+        mega_X_0[i] = X_0[count][i % (K / 8)];
+        mega_X_l[i] = X_l[count][i % (K / 8)];
+    }
+
+    quicksort(mega_X_0, mega_X_l, 0, K - 1);
+
+    uint16_t y = h;
+    for (int j = 0; j < L; ++j) {
+        int index = binary_search(mega_X_l, y, 0, K);
+        if (index != -1) { 
+            uint16_t x = mega_X_0[index];
+            for (size_t m = 0; m < L - j - 1; ++m) {
+                x = hash_and_truncate(R(r, x));
+            }
+            uint128_t maybe_PRO_hash = R(r, x); 
+            if (hash_and_truncate(maybe_PRO_hash) == h) {
+                return maybe_PRO_hash;
+            }
+        }
+        y = hash_and_truncate(R(r, y));
+    }
+    return {uint64_t(0), uint64_t(0)}; // incredible !!!
+}
+
+
+void build_precalc_table_in_memory_multithreaded_2(size_t k, size_t l, int threads = 8) {
 
     size_t range = k / 8;
     std::vector<std::future<std::pair<uint16_t*, uint16_t*>>> futures;
@@ -348,7 +388,7 @@ void build_precalc_table_in_memory_multithreaded_2(size_t k, size_t l, int threa
         }
     }
     
-    
+
     std::vector<uint16_t*> arraysX_0;
     std::vector<uint16_t*> arraysX_l;
     for (auto& future : futures) {
@@ -361,7 +401,6 @@ void build_precalc_table_in_memory_multithreaded_2(size_t k, size_t l, int threa
             throw;
         }
     }
-
 
     constexpr int N = 10000;
 
