@@ -1,3 +1,3 @@
 #!/bin/bash
-g++ -O3 -o main main.cpp -lssl -lcrypto
+g++ -O3 -o main ./src/main.cpp -lssl -lcrypto
 ./main
