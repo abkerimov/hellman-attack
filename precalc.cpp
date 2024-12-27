@@ -1,4 +1,3 @@
-#include <bitset>
 #include <iostream>
 #include <random>
 #include <fstream>
@@ -91,9 +90,8 @@ void print_uint128(const uint128_t& a) {
 
 
 uint16_t hash_and_truncate(const uint128_t& input) {
-    constexpr size_t n = s_variant; // Number of bits to keep (truncation size)
+    constexpr size_t n = s_variant; 
 
-    // Convert uint128_t to hexadecimal string
     char hex_input[33];
     input.to_hex(hex_input);
 
@@ -137,9 +135,9 @@ uint16_t hash_and_truncate(const uint128_t& input) {
 
 
     uint16_t trunc = 0;
-    trunc |= hash[0];              // First byte (least significant byte)
-    trunc |= hash[1] << 8;         // Second byte (shifted to the higher 8 bits)
-    return trunc & 0xFFFF;  // Mask to ensure it's 16 bits
+    trunc |= hash[0];             
+    trunc |= hash[1] << 8;       
+    return trunc & 0xFFFF;  
 }
 
 
@@ -253,13 +251,14 @@ int binary_search(uint16_t* mega_X_l, uint16_t target, int a, int b) {
 }
 
 
-uint128_t find_preimage(size_t K, size_t L,
-                                const std::vector<uint16_t*>& X_0,
-                                const std::vector<uint16_t*>& X_l,
-                                uint16_t h,
-                                uint128_t r) {
-
-
+uint128_t find_preimage(
+                        size_t K,
+                        size_t L,
+                        std::vector<uint16_t*> X_0,
+                        std::vector<uint16_t*> X_l,
+                        uint16_t h,
+                        uint128_t r ) {
+    
     auto* mega_X_0 = new uint16_t[K];
     auto* mega_X_l = new uint16_t[K];
     for (size_t i = 0, count = -1; i < K; ++i) { // index out of range ???
@@ -280,135 +279,73 @@ uint128_t find_preimage(size_t K, size_t L,
             for (size_t m = 0; m < L - j - 1; ++m) {
                 x = hash_and_truncate(R(r, x));
             }
-            uint128_t maybe_PRO_hash = R(r, x); 
-            if (hash_and_truncate(maybe_PRO_hash) == h) {
-                return maybe_PRO_hash;
+            uint128_t maybe_hash = R(r, x); 
+            if (hash_and_truncate(maybe_hash) == h) {
+                return maybe_hash;
             }
         }
         y = hash_and_truncate(R(r, y));
     }
+    delete[] mega_X_0;
+    delete[] mega_X_l;
     return {uint64_t(0), uint64_t(0)}; // incredible !!!
 }
 
 
-void build_precalc_table_in_memory_multithreaded(size_t k, size_t l, int threads = 8) {
 
-    size_t range = k / 8;
+
+void build_precalc_table_in_memory_multithreaded(size_t number_of_tables, size_t k, size_t l, int threads = 8) {
+    
+
+    std::vector<uint128_t> r_s;
+    for (size_t i = 0; i < number_of_tables; ++i) {
+        r_s.push_back(generateRandomVector(0));
+    }
+
+    
+    size_t range = k / threads;
+    
     std::vector<std::future<std::pair<uint16_t*, uint16_t*>>> futures;
-    uint128_t r = generateRandomVector(0);
-    for (size_t i = 0; i < threads; ++i) {
-        futures.push_back(std::async(std::launch::async, build_precalc_table_in_memory, range, l, r));
-    }
-    
-    std::vector<uint16_t*> arraysX_0;
-    std::vector<uint16_t*> arraysX_l;
-    for (auto& future : futures) {
-        try {
-            auto [arrayX_0, arrayX_l] = future.get();
-            arraysX_0.push_back(arrayX_0);
-            arraysX_l.push_back(arrayX_l);
-        } catch (const std::exception& e) {
-            std::cerr << "Помилка у future: " << e.what() << std::endl;
-            throw;
-        }
-    }
-
-    constexpr int N = 10000;
-
-    std::vector<uint128_t> errors(N, uint128_t{0, 0});
-
-    for (size_t i = 0; i < N; ++i) {
-        uint16_t randomV = hash_and_truncate(generateRandomVector(0));
-        errors[i] = find_preimage(k, l, arraysX_0, arraysX_l, randomV, r);
-    }
-
-    double count_errors = 0;
-    for (auto error : errors) {
-        if (error.lo == uint64_t{0} && error.hi == uint64_t{0}) {
-            count_errors += 1;
-        }
-    }
-
-    std::cout << "Total Errors: " << count_errors << " / " << N << std::endl;
-    double percentage = (1.0 - static_cast<double>(count_errors) / N) * 100.0;
-    std::cout << "Імовірність успіху: ";
-    std::cout << percentage <<  "%" << std::endl;
-    
-}
-
-
-uint128_t find_preimage2(size_t K, size_t L,
-                                const std::vector<uint16_t*>& X_0,
-                                const std::vector<uint16_t*>& X_l,
-                                uint16_t h,
-                                uint128_t r) {
-
-
-    auto* mega_X_0 = new uint16_t[K];
-    auto* mega_X_l = new uint16_t[K];
-
-    for (size_t i = 0, count = -1; i < K; ++i) { 
-        if (i % (K / 8) == 0) {
-            ++count;    
-        }
-        mega_X_0[i] = X_0[count][i % (K / 8)];
-        mega_X_l[i] = X_l[count][i % (K / 8)];
-    }
-
-    quicksort(mega_X_0, mega_X_l, 0, K - 1);
-
-    uint16_t y = h;
-    for (int j = 0; j < L; ++j) {
-        int index = binary_search(mega_X_l, y, 0, K);
-        if (index != -1) { 
-            uint16_t x = mega_X_0[index];
-            for (size_t m = 0; m < L - j - 1; ++m) {
-                x = hash_and_truncate(R(r, x));
-            }
-            uint128_t maybe_PRO_hash = R(r, x); 
-            if (hash_and_truncate(maybe_PRO_hash) == h) {
-                return maybe_PRO_hash;
-            }
-        }
-        y = hash_and_truncate(R(r, y));
-    }
-    return {uint64_t(0), uint64_t(0)}; // incredible !!!
-}
-
-
-void build_precalc_table_in_memory_multithreaded_2(size_t k, size_t l, int threads = 8) {
-
-    size_t range = k / 8;
-    std::vector<std::future<std::pair<uint16_t*, uint16_t*>>> futures;
-    
-    for (size_t j = 0; j < k; ++j) {
-        uint128_t r = generateRandomVector(0);
+    for (size_t i = 0; i < number_of_tables; ++i) {
+        uint128_t r = r_s[i];
         for (size_t i = 0; i < threads; ++i) {
             futures.push_back(std::async(std::launch::async, build_precalc_table_in_memory, range, l, r));
         }
     }
-    
-
-    std::vector<uint16_t*> arraysX_0;
-    std::vector<uint16_t*> arraysX_l;
+    std::vector<std::vector<uint16_t*>> arraysX_0(number_of_tables);
+    std::vector<std::vector<uint16_t*>> arraysX_l(number_of_tables);
+    int j = 0;
     for (auto& future : futures) {
         try {
             auto [arrayX_0, arrayX_l] = future.get();
-            arraysX_0.push_back(arrayX_0);
-            arraysX_l.push_back(arrayX_l);
+            arraysX_0[j / threads].push_back(arrayX_0);
+            arraysX_l[j / threads].push_back(arrayX_l);
+            ++j;
         } catch (const std::exception& e) {
-            std::cerr << "Помилка у future: " << e.what() << std::endl;
+            std::cerr << "Future error: " << e.what() << std::endl;
             throw;
         }
     }
 
     constexpr int N = 10000;
-
-    std::vector<uint128_t> errors(N, uint128_t{0, 0});
-
+    std::vector<uint128_t> errors;
     for (size_t i = 0; i < N; ++i) {
         uint16_t randomV = hash_and_truncate(generateRandomVector(0));
-        errors[i] = find_preimage(k, l, arraysX_0, arraysX_l, randomV, r);
+        for (size_t j = 0; j < number_of_tables; ++j) {
+            uint128_t r = r_s[j];
+            errors.push_back(find_preimage(k, l, arraysX_0[j], arraysX_l[j], randomV, r));
+        }
+    }
+
+    for (auto v1 : arraysX_0) {
+        for (auto v2 : v1) {
+            delete[] v2;
+        }
+    }
+    for (auto v1 : arraysX_l) {
+        for (auto v2 : v1) {
+            delete[] v2;
+        }
     }
 
     double count_errors = 0;
@@ -418,16 +355,62 @@ void build_precalc_table_in_memory_multithreaded_2(size_t k, size_t l, int threa
         }
     }
 
-    std::cout << "Total Errors: " << count_errors << " / " << N << std::endl;
-    double percentage = (1.0d - static_cast<double>(count_errors) / N) * 100.0;
+    std::cout << "Total Errors: " << count_errors << " / " << N * number_of_tables << std::endl;
+    double percentage = (1.0 - static_cast<double>(count_errors) / (N * number_of_tables)) * 100.0;
     std::cout << "Імовірність успіху: ";
     std::cout << percentage <<  "%" << std::endl;
-    
-    for (auto array : arraysX_0) {
-        delete[] array;
-    }
-    for (auto array : arraysX_l) {
-        delete[] array;
-    }
 }
 
+
+// void build_precalc_table_in_memory_multithreaded(size_t number_of_tables, size_t k, size_t l, int threads = 8) {
+
+//     size_t range = k / threads;
+//     std::vector<std::future<std::pair<uint16_t*, uint16_t*>>> futures;
+//     for (size_t i = 0; i < number_of_tables; ++i) {
+//         uint128_t r = generateRandomVector(0);
+//         for (size_t i = 0; i < threads; ++i) {
+//             futures.push_back(std::async(std::launch::async, build_precalc_table_in_memory, range, l, r));
+//         }
+//     }
+//     std::vector<uint16_t*> arraysX_0;
+//     std::vector<uint16_t*> arraysX_l;
+//     for (auto& future : futures) {
+//         try {
+//             auto [arrayX_0, arrayX_l] = future.get();
+//             arraysX_0.push_back(arrayX_0);
+//             arraysX_l.push_back(arrayX_l);
+//         } catch (const std::exception& e) {
+//             std::cerr << "Future error:  " << e.what() << std::endl;
+//             throw;
+//         }
+//     }
+
+
+//     constexpr int N = 10000;
+
+//     std::vector<uint128_t> errors(N, uint128_t{0, 0});
+
+//     for (size_t i = 0; i < N; ++i) {
+//         uint16_t randomV = hash_and_truncate(generateRandomVector(0));
+//         errors[i] = find_preimage(k, l, arraysX_0, arraysX_l, randomV, r);
+//     }
+//     for (auto v : arraysX_0) {
+//         delete[] v;
+//     }
+//     for (auto v : arraysX_l) {
+//         delete[] v;
+//     }
+
+//     double count_errors = 0;
+//     for (auto error : errors) {
+//         if (error.lo == uint64_t{0} && error.hi == uint64_t{0}) {
+//             count_errors += 1;
+//         }
+//     }
+
+//     std::cout << "Total Errors: " << count_errors << " / " << N << std::endl;
+//     double percentage = (1.0 - static_cast<double>(count_errors) / N) * 100.0;
+//     std::cout << "Імовірність успіху: ";
+//     std::cout << percentage <<  "%" << std::endl;
+    
+// }
