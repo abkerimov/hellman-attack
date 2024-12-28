@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
         for (int j = 0; j < 3; ++j) {
             std::cout << "For K = " << K_[i] << " and L = " << L_[j] << std::endl;
             auto t1 = high_resolution_clock::now();
-            build_precalc_table_in_memory_multithreaded(1, K_[i], L_[j]);
+            build_precalc_table_in_memory_multithreaded(2, K_[i], L_[j]);
             auto t2 = high_resolution_clock::now();
             auto ms_int = duration_cast<milliseconds>(t2 - t1);
             duration<double, std::milli> ms_double = t2 - t1;
