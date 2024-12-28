@@ -11,11 +11,10 @@
 #include <iomanip>  // For std::hex
 #include <openssl/evp.h>
 #include <unordered_set>
-
+#include <memory.h>
 
 #define s_variant 16
 #define h_variant 32
-
 
 
 typedef struct {
@@ -294,7 +293,6 @@ uint128_t find_preimage(
 }
 
 
-
 void build_precalc_table_in_memory_multithreaded(size_t number_of_tables, size_t k, size_t l, int threads = 8) {
     std::vector<uint128_t> r_s;
     for (size_t i = 0; i < number_of_tables; ++i) {
@@ -306,21 +304,21 @@ void build_precalc_table_in_memory_multithreaded(size_t number_of_tables, size_t
     std::vector<std::future<std::pair<uint16_t*, uint16_t*>>> futures;
     for (size_t i = 0; i < number_of_tables; ++i) {
         uint128_t r = r_s[i];
-        for (size_t i = 0; i < threads; ++i) {
+        for (size_t t = 0; t < threads; ++t) {
             futures.push_back(std::async(std::launch::async, build_precalc_table_in_memory, range, l, r));
         }
     }
 
-
-    // very bad code that doesn't work for multiple tables:
     std::vector<std::vector<uint16_t*>> arraysX_0(number_of_tables);
     std::vector<std::vector<uint16_t*>> arraysX_l(number_of_tables);
+
     int j = 0;
     for (auto& future : futures) {
         try {
             auto [arrayX_0, arrayX_l] = future.get();
-            arraysX_0[j / threads].push_back(arrayX_0);
-            arraysX_l[j / threads].push_back(arrayX_l);
+            size_t table_index = j / threads;
+            arraysX_0[table_index].push_back(arrayX_0);
+            arraysX_l[table_index].push_back(arrayX_l);
             ++j;
         } catch (const std::exception& e) {
             std::cerr << "Future error: " << e.what() << std::endl;
@@ -328,49 +326,55 @@ void build_precalc_table_in_memory_multithreaded(size_t number_of_tables, size_t
         }
     }
 
+    std::vector<uint16_t*> array_mega_X_0(number_of_tables);
+    std::vector<uint16_t*> array_mega_X_l(number_of_tables);
 
+    for (size_t i = 0; i < number_of_tables; ++i) {
+        uint16_t* arrX0 = new uint16_t[k];
+        uint16_t* arrXl = new uint16_t[k];
+        for (size_t t = 0; t < arraysX_0[i].size(); ++t) {
+            memcpy(arrX0 + t * range, arraysX_0[i][t], range * sizeof(uint16_t));
+            memcpy(arrXl + t * range, arraysX_l[i][t], range * sizeof(uint16_t));
+            delete[] arraysX_0[i][t]; 
+            delete[] arraysX_l[i][t];
+        }
+        array_mega_X_0[i] = arrX0;
+        array_mega_X_l[i] = arrXl;
+    }
+
+    for (size_t i = 0; i < number_of_tables; ++i) {
+        quicksort(array_mega_X_0[i], array_mega_X_l[i], 0, k - 1);
+    }
+    
     std::vector<uint128_t> errors;
     constexpr int N = 10000;
-    for (size_t i = 0; i < number_of_tables; ++i) {
-        size_t K = k;
-        std::vector<uint16_t> mega_X_0(K);
-        std::vector<uint16_t> mega_X_l(K);
-
-        size_t segment_size = K / arraysX_0[i].size();
-        for (size_t seg = 0; seg < arraysX_0[i].size(); ++seg) {
-            size_t offset = seg * segment_size;
-            std::copy(arraysX_0[i][seg], arraysX_0[i][seg] + segment_size, mega_X_0.begin() + offset);
-            std::copy(arraysX_l[i][seg], arraysX_l[i][seg] + segment_size, mega_X_l.begin() + offset);
-        }
-
-        quicksort(mega_X_0.data(), mega_X_l.data(), 0, K - 1);
-
-        for (size_t n = 0; n < N; ++n) {
+    for (size_t i = 0; i < N; ++i) {
+        for (size_t j = 0; j < number_of_tables; ++j) {
             uint16_t randomV = hash_and_truncate(generateRandomVector(0));
-            errors.push_back(find_preimage(K, l, mega_X_0.data(), mega_X_l.data(), randomV, r_s[i]));
-        }  
-    }
-
-    for (auto& v1 : arraysX_0) {
-        for (auto& ptr : v1) {
-            delete[] ptr;
-        }
-    }
-    for (auto& v1 : arraysX_l) {
-        for (auto& ptr : v1) {
-            delete[] ptr;
+            uint128_t pre = find_preimage(k, l, array_mega_X_0[j], array_mega_X_l[j], randomV, r_s[j]);
+            if (pre.lo != uint64_t{0} || pre.hi != uint64_t{0}) {
+                errors.push_back(pre);
+                break;
+            }
+            if (j == number_of_tables - 1) {
+                errors.push_back(pre);
+            }
         }
     }
 
     double count_errors = 0;
-    for (auto error : errors) {
+    for (const auto& error : errors) {
         if (error.lo == uint64_t{0} && error.hi == uint64_t{0}) {
             count_errors += 1;
         }
     }
 
-    std::cout << "Total Errors: " << count_errors << " / " << N * number_of_tables << std::endl;
-    double percentage = (1.0 - static_cast<double>(count_errors) / (N * number_of_tables)) * 100.0;
-    std::cout << "Імовірність успіху: ";
-    std::cout << percentage <<  "%" << std::endl;
+    std::cout << "Total Errors: " << count_errors << " / " << N << std::endl;
+    double percentage = (1.0 - static_cast<double>(count_errors) / N)  * 100.0;
+    std::cout << "Success Probability: " << percentage << "%" << std::endl;
+
+    for (size_t i = 0; i < number_of_tables; ++i) {
+        delete[] array_mega_X_0[i];
+        delete[] array_mega_X_l[i];
+    }
 }
