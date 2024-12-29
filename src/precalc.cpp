@@ -336,7 +336,6 @@ void build_precalc_table_in_memory_multithreaded(size_t number_of_tables, size_t
             for (size_t t = 0; t < arraysX_0[i].size(); ++t) {
                 memcpy(arrX0 + t * range, arraysX_0[i][t], range * sizeof(uint16_t));
                 memcpy(arrXl + t * range, arraysX_l[i][t], range * sizeof(uint16_t));
-                // Add delete[] for temporary arrays
                 delete[] arraysX_0[i][t];
                 delete[] arraysX_l[i][t];
             }
