@@ -34,12 +34,4 @@ uint128_t operator+(const uint128_t& lhs, const uint128_t& rhs);
 uint128_t operator>>(const uint128_t& lhs, unsigned long shift);
 uint128_t operator<<(const uint128_t& lhs, unsigned long shift);
 void print_uint128(const uint128_t& value);
-// size_t std::hash<uint128_t>::operator()(const uint128_t& value) const;
-
-// namespace std {
-//     template <>
-//     struct hash<uint128_t> {
-//         size_t operator()(const uint128_t& value) const;
-//     };
-// }
 
